@@ -1,0 +1,398 @@
+---
+title: "hiring_dashboard"
+format: dashboard
+logo: images/skype_icon.png
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| label: load-packages
+#| message: false
+
+library(tidyverse)
+library(ggtext)
+library(readxl)
+library(scales)
+library(DT)
+library(gt)
+library(gtExtras)
+library(glue)
+library(plotly)
+library(cellranger)
+
+```
+
+```{r}
+#| label: load-and-prep-roster
+#| message: false
+
+roster_file <- dir(path = "~/OneDrive - NJASAP/Documents/Contact List UnionWare Aptify",
+                     full.names = T,
+                     pattern = "ACTIVE.*\\.xlsx$")
+
+roster <- read_excel(roster_file,
+                     sheet = "Sheet1",
+                     range = cell_cols(1:25)
+                     )
+
+pull_date <- ymd("2024-05-27")
+
+clean_roster <- roster %>%
+  rename_with(~tolower(gsub(" ","_", .x))) %>% 
+  rename(employee_no = `employee_#`,
+         cmi = crew_member_id) %>% 
+  mutate(hire_date = ymd(hire_date),
+         end_date = ymd(end_date),
+         birthday = ymd(birthday),
+         full_name = as.character(glue("{last_name}, {first_name}")),
+         yos = ceiling(as.duration(hire_date %--% today()) / dyears(1)),
+         age = ceiling(as.duration(birthday %--% today()) / dyears(1)),
+         hire_ym = as.character(glue("{year(hire_date)}-{str_pad(month(hire_date),2,pad = '0')}")),
+         end_ym = ifelse(is.na(end_date),NA,
+                          as.character(glue("{year(end_date)}-{str_pad(month(end_date),2,pad = '0')}"))
+                          ),
+         end_year_yy = str_sub(end_ym, start = -5, end = -4),
+         hire_year_yy = str_sub(hire_ym, start = -5, end = -4),
+         pull_date = pull_date
+        )
+
+ ### Required Dates ###
+
+roster_max_pull_floor <- floor_date(max(clean_roster$pull_date, na.rm = T), months(1))
+
+roster_12m_lb <- add_with_rollback(roster_max_pull_floor,
+                                   months(-11))
+roster_pull_jan_floor <- floor_date(pull_date, years(1))
+
+### LIST OF MONTHS ###
+
+run_total_months <- clean_roster %>% 
+  select(hire_date) %>% 
+  mutate(hire_floor = floor_date(hire_date, months(1))) %>% 
+  select(hire_floor) %>% 
+  filter(hire_floor >= roster_12m_lb) %>% 
+  unique()
+
+run_total_months <- as.list(run_total_months$hire_floor)
+
+run_total_months_ytd <- clean_roster %>% 
+  select(hire_date) %>% 
+  mutate(hire_floor = floor_date(hire_date, months(1))) %>% 
+  select(hire_floor) %>% 
+  filter(hire_floor >= roster_pull_jan_floor) %>% 
+  unique()
+
+run_total_months_ytd <- as.list(run_total_months_ytd$hire_floor)
+
+### Total Pilots at Month ####
+
+fmonth_total <- function(x){
+
+  run_total <- clean_roster %>% 
+    select(hire_date, end_date) %>% 
+    mutate(month_run = as.character(x)) %>% 
+    filter(hire_date < x & !is.na(hire_date)) %>% 
+    filter(end_date >= x | is.na(end_date)) %>% 
+    count(month_run)
+
+  return(run_total)
+}
+
+# fmonth_total(run_total_months[12])
+
+# as_date(19844)
+
+### Bind Total by Month ###
+
+## 12-Month Lookback ##
+
+monthly_total <- map_dfr(.x = run_total_months, .f = fmonth_total)
+
+monthly_total <- monthly_total %>% 
+  mutate(month_run = ymd(month_run),
+         year_month = as.character(glue("{year(month_run)}-{str_pad(month(month_run),2, pad = 0)}"))
+         )
+
+## YTD ##
+
+monthly_total_ytd <- map_dfr(.x = run_total_months_ytd, .f = fmonth_total)
+
+monthly_total_ytd <- monthly_total_ytd %>% 
+  mutate(month_run = ymd(month_run),
+         year_month = as.character(glue("{year(month_run)}-{str_pad(month(month_run),2, pad = 0)}"))
+         )
+
+### Hire and Attrition Plots ###
+
+## Hire & Attrition Multi-Plot 12-Month ##
+
+t_end_ym <- clean_roster %>%
+  select(cmi, full_name, hire_date, hire_ym, end_date, end_ym) %>% 
+  filter(end_date >= roster_12m_lb ,!is.na(end_date)) %>% 
+  count(end_ym, name = "end_count")
+
+t_hire_ym <- clean_roster %>%
+  select(cmi, full_name, hire_date, hire_ym, end_date, end_ym) %>% 
+  filter(hire_date >= roster_12m_lb ,!is.na(hire_date)) %>% 
+  count(hire_ym, name = "hire_count")
+
+# join_roster_hire_attrit #
+
+join_hire_attrit <- t_hire_ym %>% 
+  left_join(t_end_ym, by = join_by(hire_ym == end_ym))
+
+## Hire & Attrition Multi-Plot YTD ##
+
+t_end_ym_ytd <- clean_roster %>%
+  select(cmi, full_name, hire_date, hire_ym, end_date, end_ym) %>% 
+  filter(end_date >= roster_pull_jan_floor ,!is.na(end_date)) %>% 
+  count(end_ym, name = "end_count")
+
+t_hire_ym_ytd <- clean_roster %>%
+  select(cmi, full_name, hire_date, hire_ym, end_date, end_ym) %>% 
+  filter(hire_date >= roster_pull_jan_floor,!is.na(hire_date)) %>% 
+  count(hire_ym, name = "hire_count")
+
+# join_roster_hire_attrit #
+
+join_hire_attrit_ytd <- t_hire_ym_ytd %>% 
+  left_join(t_end_ym_ytd, by = join_by(hire_ym == end_ym))
+
+```
+
+
+# 12-Month Hiring & Attrition {scrolling="false"}
+
+```{r}
+#| label: hire attrition values 12-month
+#| results: hide
+
+n_attrit <- clean_roster %>%
+  select(cmi, full_name, hire_date, hire_ym, end_date, end_ym) %>% 
+  filter(end_date >= roster_12m_lb ,!is.na(end_date)) %>% 
+  count() %>% 
+  pull(n)
+
+n_hire <- clean_roster %>%
+  select(cmi, full_name, hire_date, hire_ym, end_date, end_ym) %>% 
+  filter(hire_date >= roster_12m_lb ,!is.na(hire_date)) %>% 
+  count() %>% 
+  pull(n)
+
+net_staff <- n_hire-n_attrit
+
+```
+
+## row {height="20%"}
+
+```{r}
+#| content: valuebox
+#| title: "Total Hires"
+
+list(
+  icon = "globe",
+  color = "primary",
+  value = n_hire
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Total Attrition"
+
+list(
+  icon = "person-lines-fill",
+  color = "secondary",
+  value = n_attrit
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Net Staffing"
+
+list(
+  icon = "person-lines-fill",
+  color = "primary",
+  value = net_staff
+)
+```
+
+## row
+
+```{r}
+
+# Hire Attrit Plot #
+
+hire_attrit_title <- md(glue("Data current as of {year(roster_max_pull_floor)}-{str_pad(month(roster_max_pull_floor),2, pad = 0)}-{str_pad(day(pull_date),2, pad = 0)}"))
+
+# phire_attrit <- join_hire_attrit %>% 
+#   rename(year_month = hire_ym) %>% 
+#   mutate(net_gain = hire_count-end_count) %>% 
+#   ggplot(aes(text = glue("Hired: {hire_count}")))+
+#   geom_line(aes(x = year_month, y = hire_count), group = "hire_count", color = "#33FF7B")+
+#   geom_line(aes(x = year_month, y = end_count), group = "end_count", color = "#FF7B33")+
+#   geom_point(aes(x = year_month, y = hire_count), size = 3, color = "steelblue", alpha = 0.8)+
+#   geom_point(aes(x = year_month, y = end_count), size = 3, color = "steelblue", alpha = 0.8)+
+#   geom_text(aes(x = year_month, y = end_count,
+#                 label = end_count,
+#                 vjust = 3))+
+#     geom_text(aes(x = year_month, y = hire_count,
+#                 label = hire_count,
+#                 vjust = -1.5))+
+#   scale_y_continuous(limits = c(0,125), n.breaks = 6)+
+#   theme_bw()+
+#   labs(x = NULL,
+#        y = "Count")+
+#   ggtitle("NJASAP HIRING & ATTRITION",
+#           subtitle = glue("*Data current as of {year(roster_max_pull_floor)}-{str_pad(month(roster_max_pull_floor),2, pad = 0)}-{str_pad(day(pull_date),2, pad = 0)}*")
+#             )+
+#   theme(plot.subtitle = element_markdown(),
+#         axis.text.x = element_text(angle = 45, hjust = 1)
+#         )
+
+# ggplotly(phire_attrit, tooltip = "text") %>% 
+#   layout(title = list(text = paste0('NJASAP HIRING & ATTRITION',
+#                                     '<br>',
+#                                     '<sup>',
+#                                      hire_attrit_title,'</sup>')))
+
+join_hire_attrit %>% 
+  rename(year_month = hire_ym) %>% 
+  mutate(net_gain = hire_count-end_count) %>% 
+  plot_ly(x = ~year_month, y = ~hire_count, type = "scatter", mode = "lines+markers",
+          line = list(color = "#33FF7B"),
+          marker = list(color = "steelblue", size = 10, alpha = 0.8),
+          name = "Hired") %>% 
+  add_trace(x = ~year_month, y = ~end_count, type = "scatter", mode = "lines+markers",
+            line = list(color = "#FF7B33"),
+            name = "Attrited") %>% 
+  layout( xaxis = list(title = "", showline = TRUE, tickangle = -45),
+          yaxis = list(title = "Count", showline = TRUE),
+          title = list( text = paste0('NJASAP HIRING & ATTRITION (12-Months)',
+                                    '<br>',
+                                    '<sup><i>',
+                                     hire_attrit_title,'</sup></i>'),
+                        x = 0.1, y = 0.95)
+          )
+
+```
+
+
+# YTD Hiring & Attrition {scrolling="false"}
+
+```{r}
+#| label: hire attrition values ytd
+#| results: hide
+
+n_attrit_ytd <- clean_roster %>%
+  select(cmi, full_name, hire_date, hire_ym, end_date, end_ym) %>% 
+  filter(end_date >= roster_pull_jan_floor,!is.na(end_date)) %>% 
+  count() %>% 
+  pull(n)
+
+n_hire_ytd <- clean_roster %>%
+  select(cmi, full_name, hire_date, hire_ym, end_date, end_ym) %>% 
+  filter(hire_date >= roster_pull_jan_floor,!is.na(hire_date)) %>% 
+  count() %>% 
+  pull(n)
+
+net_staff_ytd <- n_hire_ytd - n_attrit_ytd
+
+```
+
+## row {height="20%"}
+
+```{r}
+#| content: valuebox
+#| title: "Total Hires YTD"
+
+list(
+  icon = "globe",
+  color = "primary",
+  value = n_hire_ytd
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Total Attrition YTD"
+
+list(
+  icon = "person-lines-fill",
+  color = "secondary",
+  value = n_attrit_ytd
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Net Staffing YTD"
+
+list(
+  icon = "person-lines-fill",
+  color = "primary",
+  value = net_staff_ytd
+)
+```
+
+## row
+
+```{r}
+
+# Hire Attrit Plot #
+
+hire_attrit_ytd_title <- md(glue("Data current as of {year(roster_max_pull_floor)}-{str_pad(month(roster_max_pull_floor),2, pad = 0)}-{str_pad(day(pull_date),2, pad = 0)}"))
+
+# phire_attrit <- join_hire_attrit %>% 
+#   rename(year_month = hire_ym) %>% 
+#   mutate(net_gain = hire_count-end_count) %>% 
+#   ggplot(aes(text = glue("Hired: {hire_count}")))+
+#   geom_line(aes(x = year_month, y = hire_count), group = "hire_count", color = "#33FF7B")+
+#   geom_line(aes(x = year_month, y = end_count), group = "end_count", color = "#FF7B33")+
+#   geom_point(aes(x = year_month, y = hire_count), size = 3, color = "steelblue", alpha = 0.8)+
+#   geom_point(aes(x = year_month, y = end_count), size = 3, color = "steelblue", alpha = 0.8)+
+#   geom_text(aes(x = year_month, y = end_count,
+#                 label = end_count,
+#                 vjust = 3))+
+#     geom_text(aes(x = year_month, y = hire_count,
+#                 label = hire_count,
+#                 vjust = -1.5))+
+#   scale_y_continuous(limits = c(0,125), n.breaks = 6)+
+#   theme_bw()+
+#   labs(x = NULL,
+#        y = "Count")+
+#   ggtitle("NJASAP HIRING & ATTRITION",
+#           subtitle = glue("*Data current as of {year(roster_max_pull_floor)}-{str_pad(month(roster_max_pull_floor),2, pad = 0)}-{str_pad(day(pull_date),2, pad = 0)}*")
+#             )+
+#   theme(plot.subtitle = element_markdown(),
+#         axis.text.x = element_text(angle = 45, hjust = 1)
+#         )
+
+# ggplotly(phire_attrit, tooltip = "text") %>% 
+#   layout(title = list(text = paste0('NJASAP HIRING & ATTRITION',
+#                                     '<br>',
+#                                     '<sup>',
+#                                      hire_attrit_title,'</sup>')))
+
+join_hire_attrit_ytd %>% 
+  rename(year_month = hire_ym) %>% 
+  mutate(net_gain = hire_count-end_count) %>% 
+  plot_ly(x = ~year_month, y = ~hire_count, type = "scatter", mode = "lines+markers",
+          line = list(color = "#33FF7B"),
+          marker = list(color = "steelblue", size = 10, alpha = 0.8),
+          name = "Hired") %>% 
+  add_trace(x = ~year_month, y = ~end_count, type = "scatter", mode = "lines+markers",
+            line = list(color = "#FF7B33"),
+            name = "Attrited") %>% 
+  layout( xaxis = list(title = "", showline = TRUE, tickangle = -45),
+          yaxis = list(title = "Count", showline = TRUE),
+          title = list( text = paste0('NJASAP HIRING & ATTRITION (YTD)',
+                                    '<br>',
+                                    '<sup><i>',
+                                     hire_attrit_title,'</sup></i>'),
+                        x = 0.1, y = 0.95)
+          )
+
+```
