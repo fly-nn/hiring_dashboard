@@ -280,7 +280,7 @@ join_hire_attrit %>%
 ```
 
 
-# YTD Hiring & Attrition {scrolling="false"}
+# YTD Hiring & Attrition {scrolling="true"}
 
 ```{r}
 #| label: hire attrition values ytd
