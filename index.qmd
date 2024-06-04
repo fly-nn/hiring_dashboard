@@ -162,7 +162,7 @@ join_hire_attrit_ytd <- t_hire_ym_ytd %>%
 ```
 
 
-# 12-Month Hiring & Attrition {scrolling="false"}
+# 12-Month Hiring & Attrition {scrolling="true"}
 
 ```{r}
 #| label: hire attrition values 12-month
@@ -268,7 +268,7 @@ join_hire_attrit %>%
   add_trace(x = ~year_month, y = ~end_count, type = "scatter", mode = "lines+markers",
             line = list(color = "#FF7B33"),
             name = "Attrited") %>% 
-  layout( xaxis = list(title = "", showline = TRUE, tickangle = -45),
+  layout( xaxis = list(title = "", showline = TRUE, tickangle = 0),
           yaxis = list(title = "Count", showline = TRUE),
           title = list( text = paste0('NJASAP HIRING & ATTRITION (12-Months)',
                                     '<br>',
@@ -386,7 +386,7 @@ join_hire_attrit_ytd %>%
   add_trace(x = ~year_month, y = ~end_count, type = "scatter", mode = "lines+markers",
             line = list(color = "#FF7B33"),
             name = "Attrited") %>% 
-  layout( xaxis = list(title = "", showline = TRUE, tickangle = -45),
+  layout( xaxis = list(title = "", showline = TRUE, tickangle = 0),
           yaxis = list(title = "Count", showline = TRUE),
           title = list( text = paste0('NJASAP HIRING & ATTRITION (YTD)',
                                     '<br>',
