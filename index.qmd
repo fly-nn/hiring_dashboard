@@ -302,7 +302,7 @@ net_staff_ytd <- n_hire_ytd - n_attrit_ytd
 
 ```
 
-## row {height="20%"}
+## row {height="17%"}
 
 ```{r}
 #| content: valuebox
