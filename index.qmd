@@ -140,7 +140,8 @@ t_hire_ym <- clean_roster %>%
 # join_roster_hire_attrit #
 
 join_hire_attrit <- t_hire_ym %>% 
-  left_join(t_end_ym, by = join_by(hire_ym == end_ym))
+  left_join(t_end_ym, by = join_by(hire_ym == end_ym)) %>% 
+  mutate(net = hire_count - end_count, avg_hire = mean(hire_count), avg_end = mean(end_count))
 
 ## Hire & Attrition Multi-Plot YTD ##
 
@@ -157,7 +158,8 @@ t_hire_ym_ytd <- clean_roster %>%
 # join_roster_hire_attrit #
 
 join_hire_attrit_ytd <- t_hire_ym_ytd %>% 
-  left_join(t_end_ym_ytd, by = join_by(hire_ym == end_ym))
+  left_join(t_end_ym_ytd, by = join_by(hire_ym == end_ym)) %>% 
+  mutate(net = hire_count - end_count, avg_hire = mean(hire_count), avg_end = mean(end_count))
 
 ```
 
@@ -268,6 +270,12 @@ join_hire_attrit %>%
   add_trace(x = ~year_month, y = ~end_count, type = "scatter", mode = "lines+markers",
             line = list(color = "#FF7B33"),
             name = "Attrited") %>% 
+  add_trace(x = ~year_month, y = ~avg_hire, type = "scatter", mode = "lines+markers",
+            line = list(color = "#33B7FF"),
+            name = "Avg. Hire") %>% 
+  add_trace(x = ~year_month, y = ~avg_end, type = "scatter", mode = "lines+markers",
+            line = list(color = "#7B33FF"),
+            name = "Avg. Attrit") %>% 
   layout( xaxis = list(title = "", showline = TRUE, tickangle = 0),
           yaxis = list(title = "Count", showline = TRUE),
           title = list( text = paste0('NJASAP HIRING & ATTRITION (12-Months)',
@@ -386,6 +394,12 @@ join_hire_attrit_ytd %>%
   add_trace(x = ~year_month, y = ~end_count, type = "scatter", mode = "lines+markers",
             line = list(color = "#FF7B33"),
             name = "Attrited") %>% 
+  add_trace(x = ~year_month, y = ~avg_hire, type = "scatter", mode = "lines+markers",
+            line = list(color = "#33B7FF"),
+            name = "Avg. Hire") %>% 
+    add_trace(x = ~year_month, y = ~avg_end, type = "scatter", mode = "lines+markers",
+            line = list(color = "#7B33FF"),
+            name = "Avg. Attrit") %>% 
   layout( xaxis = list(title = "", showline = TRUE, tickangle = -30),
           yaxis = list(title = "Count", showline = TRUE),
           title = list( text = paste0('NJASAP HIRING & ATTRITION (YTD)',
